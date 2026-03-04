@@ -1,0 +1,324 @@
+---
+title: "RNA-seq Differential Expression Report"
+date: "`r Sys.Date()`"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-float: true
+    theme: flatly
+    code-fold: true
+    self-contained: true
+  pdf:
+    toc: true
+    toc-depth: 3
+    geometry: margin=1in
+    fontsize: 11pt
+    colorlinks: true
+params:
+  results: NULL
+  significant: NULL
+  contrast_level: "contrast"
+  ref_level: "reference"
+  padj_cutoff: 0.05
+  lfc_cutoff: 1
+  go_results: NULL
+  kegg_results: NULL
+  llm_interpretation: NULL
+  llm_upregulated: NULL
+  llm_downregulated: NULL
+  model_used: "mistral"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width  = 9,
+  fig.height = 6
+)
+
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(knitr)
+library(kableExtra)
+
+# Plain objects from params — no S4
+res            <- params$results
+sig            <- params$significant
+go_res         <- params$go_results
+kg_res         <- params$kegg_results
+contrast_level <- params$contrast_level
+ref_level      <- params$ref_level
+padj_cutoff    <- params$padj_cutoff
+lfc_cutoff     <- params$lfc_cutoff
+```
+
+# Experiment Overview
+
+```{r summary-table}
+data.frame(
+  Parameter = c(
+    "Contrast",
+    "Reference level",
+    "Total genes tested",
+    "Significant DE genes",
+    "Upregulated",
+    "Downregulated",
+    "Adj. p-value cutoff",
+    "Log2FC cutoff"
+  ),
+  Value = c(
+    contrast_level,
+    ref_level,
+    nrow(res),
+    nrow(sig),
+    sum(sig$log2FoldChange > 0),
+    sum(sig$log2FoldChange < 0),
+    padj_cutoff,
+    lfc_cutoff
+  )
+) |>
+  kable(align = c("l", "r")) |>
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width        = FALSE,
+    position          = "left"
+  )
+```
+
+---
+
+# Differential Expression Results
+
+## Volcano Plot
+
+```{r volcano-plot}
+res_plot <- res |>
+  mutate(
+    neg_log10_padj = -log10(padj),
+    status = case_when(
+      padj < padj_cutoff & log2FoldChange >  lfc_cutoff ~ "Up",
+      padj < padj_cutoff & log2FoldChange < -lfc_cutoff ~ "Down",
+      TRUE ~ "NS"
+    )
+  )
+
+top_genes <- res_plot |>
+  filter(status != "NS") |>
+  arrange(padj) |>
+  slice_head(n = 15)
+
+ggplot(res_plot, aes(log2FoldChange, neg_log10_padj, color = status)) +
+  geom_point(alpha = 0.6, size = 1.2) +
+  geom_text_repel(
+    data = top_genes,
+    aes(label = gene),
+    size = 3,
+    max.overlaps = 20
+  ) +
+  geom_vline(xintercept = c(-lfc_cutoff, lfc_cutoff),
+             linetype = "dashed", color = "grey50") +
+  geom_hline(yintercept = -log10(padj_cutoff),
+             linetype = "dashed", color = "grey50") +
+  scale_color_manual(
+    values = c(Up = "#E64B35", Down = "#4DBBD5", NS = "grey70")
+  ) +
+  labs(
+    x     = "Log2 Fold Change",
+    y     = "-Log10 Adjusted P-value",
+    color = "Status",
+    title = paste("Volcano Plot:", contrast_level, "vs", ref_level)
+  ) +
+  theme_bw(base_size = 13) +
+  theme(legend.position = "top")
+```
+
+## Top Upregulated Genes
+
+```{r up-table}
+sig |>
+  filter(log2FoldChange > 0) |>
+  arrange(padj) |>
+  slice_head(n = 20) |>
+  mutate(
+    log2FoldChange = round(log2FoldChange, 3),
+    baseMean       = round(baseMean, 1),
+    padj           = signif(padj, 3),
+    pvalue         = signif(pvalue, 3)
+  ) |>
+  dplyr::select(gene, baseMean, log2FoldChange, pvalue, padj) |>
+  kable(col.names = c("Gene", "Base Mean", "Log2FC", "P-value", "Adj. P-value")) |>
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width        = FALSE
+  ) |>
+  row_spec(0, bold = TRUE)
+```
+
+## Top Downregulated Genes
+
+```{r down-table}
+sig |>
+  filter(log2FoldChange < 0) |>
+  arrange(padj) |>
+  slice_head(n = 20) |>
+  mutate(
+    log2FoldChange = round(log2FoldChange, 3),
+    baseMean       = round(baseMean, 1),
+    padj           = signif(padj, 3),
+    pvalue         = signif(pvalue, 3)
+  ) |>
+  dplyr::select(gene, baseMean, log2FoldChange, pvalue, padj) |>
+  kable(col.names = c("Gene", "Base Mean", "Log2FC", "P-value", "Adj. P-value")) |>
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width        = FALSE
+  ) |>
+  row_spec(0, bold = TRUE)
+```
+
+## Full Results Table
+
+```{r full-table}
+res |>
+  arrange(padj) |>
+  mutate(
+    log2FoldChange = round(log2FoldChange, 3),
+    baseMean       = round(baseMean, 1),
+    padj           = signif(padj, 3),
+    pvalue         = signif(pvalue, 3)
+  ) |>
+  dplyr::select(gene, baseMean, log2FoldChange, pvalue, padj) |>
+  kable(col.names = c("Gene", "Base Mean", "Log2FC", "P-value", "Adj. P-value")) |>
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width        = TRUE
+  ) |>
+  scroll_box(height = "400px")
+```
+
+---
+
+# Pathway Enrichment
+
+## GO Biological Process
+
+```{r go-plot, fig.height=8}
+if (!is.null(go_res) && nrow(go_res) > 0) {
+  go_top <- go_res |>
+    filter(p.adjust < 0.05) |>
+    arrange(p.adjust) |>
+    slice_head(n = 20) |>
+    mutate(
+      Description = factor(Description, levels = rev(Description)),
+      GeneRatio_num = sapply(GeneRatio, function(x) {
+        parts <- strsplit(x, "/")[[1]]
+        as.numeric(parts[1]) / as.numeric(parts[2])
+      })
+    )
+
+  ggplot(go_top, aes(GeneRatio_num, Description, color = p.adjust, size = Count)) +
+    geom_point() +
+    scale_color_gradient(low = "#E64B35", high = "#4DBBD5") +
+    labs(
+      x     = "Gene Ratio",
+      y     = NULL,
+      color = "Adj. P-value",
+      size  = "Gene Count",
+      title = "GO Biological Process Enrichment"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(axis.text.y = element_text(size = 9))
+} else {
+  cat("No significant GO terms detected.")
+}
+```
+
+## KEGG Pathways
+
+```{r kegg-plot, fig.height=8}
+if (!is.null(kg_res) && nrow(kg_res) > 0) {
+  kg_top <- kg_res |>
+    filter(p.adjust < 0.05) |>
+    arrange(p.adjust) |>
+    slice_head(n = 20) |>
+    mutate(
+      Description = factor(Description, levels = rev(Description)),
+      GeneRatio_num = sapply(GeneRatio, function(x) {
+        parts <- strsplit(x, "/")[[1]]
+        as.numeric(parts[1]) / as.numeric(parts[2])
+      })
+    )
+
+  ggplot(kg_top, aes(GeneRatio_num, Description, color = p.adjust, size = Count)) +
+    geom_point() +
+    scale_color_gradient(low = "#E64B35", high = "#4DBBD5") +
+    labs(
+      x     = "Gene Ratio",
+      y     = NULL,
+      color = "Adj. P-value",
+      size  = "Gene Count",
+      title = "KEGG Pathway Enrichment"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(axis.text.y = element_text(size = 9))
+} else {
+  cat("No significant KEGG pathways detected.")
+}
+```
+
+---
+
+# LLM-Assisted Biological Interpretation
+
+> **Note:** The following sections were generated by a locally deployed large language
+> model (`r params$model_used`) based on the differential expression and pathway
+> enrichment results above. All interpretations should be critically evaluated
+> in the context of your experimental system.
+
+---
+
+## Overall Biological Interpretation
+
+```{r llm-overall, results='asis'}
+if (!is.null(params$llm_interpretation)) {
+  cat(params$llm_interpretation)
+} else {
+  cat("LLM interpretation not available.")
+}
+```
+
+---
+
+## Upregulated Genes — Biological Context
+
+```{r llm-up, results='asis'}
+if (!is.null(params$llm_upregulated)) {
+  cat(params$llm_upregulated)
+} else {
+  cat("LLM interpretation not available.")
+}
+```
+
+---
+
+## Downregulated Genes — Biological Context
+
+```{r llm-down, results='asis'}
+if (!is.null(params$llm_downregulated)) {
+  cat(params$llm_downregulated)
+} else {
+  cat("LLM interpretation not available.")
+}
+```
+
+---
+
+# Session Information
+
+```{r session-info}
+sessionInfo()
+```
