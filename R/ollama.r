@@ -1,7 +1,8 @@
-# ollama.R
+# ollama.r
 # Bridge between R and local Ollama instance via httr2
 
 library(httr2)
+library(parallel)
 
 #' Check if Ollama is running and model is available
 #' @param model Character. Model name to check
@@ -11,7 +12,7 @@ check_ollama <- function(model = "mistral") {
     resp <- request("http://localhost:11434/api/tags") |>
       req_perform() |>
       resp_body_json()
-    
+
     available <- sapply(resp$models, function(m) m$name)
     any(grepl(model, available))
   }, error = function(e) {
@@ -24,7 +25,7 @@ check_ollama <- function(model = "mistral") {
 #' @param model Character. Ollama model name
 #' @param temperature Numeric. Sampling temperature (0-1)
 #' @return Character. Model response text
-query_ollama <- function(prompt, 
+query_ollama <- function(prompt,
                          model = "mistral",
                          temperature = 0.3) {
   tryCatch({
@@ -53,12 +54,35 @@ query_ollama <- function(prompt,
       req_timeout(120) |>
       req_perform() |>
       resp_body_json()
-    
+
     resp$message$content
-    
+
   }, error = function(e) {
     stop(paste("Ollama query failed:", conditionMessage(e)))
   })
+}
+
+#' Query Ollama with multiple prompts in parallel
+#' @param prompts List of character strings. Prompts to send
+#' @param model Character. Ollama model name
+#' @param temperature Numeric. Sampling temperature (0-1)
+#' @return List of character strings. Model responses in same order as prompts
+parallel_query_ollama <- function(prompts,
+                                   model = "mistral",
+                                   temperature = 0.3) {
+  n_cores <- min(length(prompts), detectCores() - 1, 3)
+
+  if (n_cores <= 1) {
+    return(lapply(prompts, query_ollama, model = model, temperature = temperature))
+  }
+
+  cl <- makeCluster(n_cores)
+  on.exit(stopCluster(cl))
+
+  clusterEvalQ(cl, library(httr2))
+  clusterExport(cl, "query_ollama", envir = environment())
+
+  parLapply(cl, prompts, query_ollama, model = model, temperature = temperature)
 }
 
 #' Get list of available models from Ollama
@@ -68,7 +92,7 @@ list_ollama_models <- function() {
     resp <- request("http://localhost:11434/api/tags") |>
       req_perform() |>
       resp_body_json()
-    
+
     sapply(resp$models, function(m) m$name)
   }, error = function(e) {
     character(0)

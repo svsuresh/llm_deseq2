@@ -135,7 +135,11 @@ plot_go_dotplot <- function(ego, top_n = 20) {
   dotplot(ego, showCategory = top_n) +
     ggtitle("GO Biological Process Enrichment") +
     theme_bw(base_size = 12) +
-    theme(axis.text.y = element_text(size = 9))
+    theme(
+      text        = element_text(color = "black"),
+      axis.text   = element_text(color = "black"),
+      axis.text.y = element_text(size = 9, color = "black")
+    )
 }
 
 #' Plot KEGG dotplot
@@ -144,11 +148,15 @@ plot_go_dotplot <- function(ego, top_n = 20) {
 #' @return ggplot object or NULL
 plot_kegg_dotplot <- function(ekegg, top_n = 20) {
   if (is.null(ekegg) || nrow(ekegg@result) == 0) return(NULL)
-  
+
   dotplot(ekegg, showCategory = top_n) +
     ggtitle("KEGG Pathway Enrichment") +
     theme_bw(base_size = 12) +
-    theme(axis.text.y = element_text(size = 9))
+    theme(
+      text        = element_text(color = "black"),
+      axis.text   = element_text(color = "black"),
+      axis.text.y = element_text(size = 9, color = "black")
+    )
 }
 
 #' Plot GO emap (enrichment map)
@@ -157,10 +165,14 @@ plot_kegg_dotplot <- function(ekegg, top_n = 20) {
 #' @return ggplot object or NULL
 plot_go_emap <- function(ego, top_n = 30) {
   if (is.null(ego) || nrow(ego@result) < 2) return(NULL)
-  
+
   tryCatch({
     ego2 <- pairwise_termsim(ego)
     emapplot(ego2, showCategory = top_n) +
-      ggtitle("GO Term Enrichment Map")
+      ggtitle("GO Term Enrichment Map") +
+      theme(
+        text      = element_text(color = "black"),
+        axis.text = element_text(color = "black")
+      )
   }, error = function(e) NULL)
 }

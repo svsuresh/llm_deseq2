@@ -137,30 +137,32 @@ run_deseq2 <- function(dds,
 
 #' Generate volcano plot
 #' @param res Data frame. Full DESeq2 results
-#' @param padj_cutoff Numeric
-#' @param lfc_cutoff Numeric
+#' @param padj_cutoff Numeric. Adjusted p-value cutoff for the volcano plot
+#' @param lfc_up Numeric. Positive log2FC cutoff (must be > 0)
+#' @param lfc_dn Numeric. Negative log2FC cutoff (must be < 0)
 #' @param top_n Integer. Number of top genes to label
 #' @return ggplot object
-plot_volcano <- function(res, 
-                         padj_cutoff = 0.05, 
-                         lfc_cutoff  = 1,
+plot_volcano <- function(res,
+                         padj_cutoff = 0.05,
+                         lfc_up      = 1,
+                         lfc_dn      = -1,
                          top_n       = 15) {
-  
+
   res <- res |>
     mutate(
       neg_log10_padj = -log10(padj),
       status = case_when(
-        padj < padj_cutoff & log2FoldChange >  lfc_cutoff ~ "Up",
-        padj < padj_cutoff & log2FoldChange < -lfc_cutoff ~ "Down",
+        padj < padj_cutoff & log2FoldChange >  lfc_up ~ "Up",
+        padj < padj_cutoff & log2FoldChange <  lfc_dn ~ "Down",
         TRUE ~ "NS"
       )
     )
-  
+
   # Top genes to label
   top_genes <- res |>
     filter(status != "NS") |>
     slice_head(n = top_n)
-  
+
   ggplot(res, aes(log2FoldChange, neg_log10_padj, color = status)) +
     geom_point(alpha = 0.6, size = 1.2) +
     geom_text_repel(
@@ -169,9 +171,9 @@ plot_volcano <- function(res,
       size    = 3,
       max.overlaps = 20
     ) +
-    geom_vline(xintercept = c(-lfc_cutoff, lfc_cutoff), 
+    geom_vline(xintercept = c(lfc_dn, lfc_up),
                linetype = "dashed", color = "grey50") +
-    geom_hline(yintercept = -log10(padj_cutoff), 
+    geom_hline(yintercept = -log10(padj_cutoff),
                linetype = "dashed", color = "grey50") +
     scale_color_manual(values = c(Up = "#E64B35", Down = "#4DBBD5", NS = "grey70")) +
     labs(
@@ -181,7 +183,11 @@ plot_volcano <- function(res,
       title = "Volcano Plot"
     ) +
     theme_bw(base_size = 13) +
-    theme(legend.position = "top")
+    theme(
+      legend.position = "top",
+      text            = element_text(color = "black"),
+      axis.text       = element_text(color = "black")
+    )
 }
 
 #' Generate PCA plot
@@ -193,5 +199,9 @@ plot_pca <- function(dds, condition) {
   plotPCA(vsd, intgroup = condition) +
     theme_bw(base_size = 13) +
     ggtitle("PCA Plot") +
-    theme(legend.position = "top")
+    theme(
+      legend.position = "top",
+      text            = element_text(color = "black"),
+      axis.text       = element_text(color = "black")
+    )
 }
